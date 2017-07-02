@@ -8,7 +8,7 @@
 #define RX_LED 17
 
 #define KEY_TIMEOUT 100
-#define MOUSE_BASE_SPEED 8.0
+#define MOUSE_BASE_SPEED 8
 #define MOUSE_SPEEDUP 3
 
 #define SYN_FIELD 0x55
@@ -47,7 +47,7 @@ byte b, i, n;
 LinFrame frame;
 
 unsigned long lastBackDown, lastEnterDown, lastMouseDown;
-float mouseSpeed = MOUSE_BASE_SPEED;
+int mouseSpeed = MOUSE_BASE_SPEED;
 
 void setup() {
   pinMode(RX_LED, OUTPUT);
