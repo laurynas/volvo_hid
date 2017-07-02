@@ -43,8 +43,7 @@
 #define NAV_BACK 1
 #define NAV_ENTER 8
 
-byte b, i, n;
-LinFrame frame;
+LinFrame frame = LinFrame();
 
 unsigned long lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown;
 int mouseSpeed = MOUSE_BASE_SPEED;
@@ -60,33 +59,36 @@ void setup() {
 
   Mouse.begin();
   Keyboard.begin();
-
-  frame = LinFrame();
 }
 
 void loop() {
-  if (Serial1.available()) {
-    b = Serial1.read();
-    n = frame.num_bytes();
-
-    if (b == SYN_FIELD && n > 2 && frame.get_byte(n - 1) == 0) {
-      digitalWrite(RX_LED, LOW);
-      frame.pop_byte();
-      handle_frame();
-      frame.reset();
-      digitalWrite(RX_LED, HIGH);
-    } else if (n == LinFrame::kMaxBytes) {
-      frame.reset();
-    } else {
-      frame.append_byte(b);
-    }
-  }
+  if (Serial1.available())
+    read_lin_bus();
 
   release_keys();
   check_ignition_key();
 }
 
-void handle_frame() {
+void read_lin_bus() {
+  byte b = Serial1.read();
+  int n = frame.num_bytes();
+
+  if (b == SYN_FIELD && n > 2 && frame.get_byte(n - 1) == 0) {
+    digitalWrite(RX_LED, LOW);
+    
+    frame.pop_byte();
+    handle_swm_frame();
+    frame.reset();
+    
+    digitalWrite(RX_LED, HIGH);
+  } else if (n == LinFrame::kMaxBytes) {
+    frame.reset();
+  } else {
+    frame.append_byte(b);
+  }
+}
+
+void handle_swm_frame() {
   if (frame.get_byte(0) != SWM_ID)
     return;
 
@@ -100,10 +102,11 @@ void handle_frame() {
     return;
 
 //  dump_frame();
-  handle_click();  
+  handle_joystic();
+  handle_buttons();  
 }
 
-void handle_click() {
+void handle_joystic() {
   switch (frame.get_byte(1)) {
     case NAV_UP:
       move_mouse(0, -1);
@@ -117,8 +120,10 @@ void handle_click() {
     case NAV_RIGHT:
       move_mouse(1, 0);
       break;
-  }
+  }  
+}
 
+void handle_buttons() {
   switch (frame.get_byte(2)) {
     case NAV_BACK:
       if (!lastBackDown) 
@@ -137,7 +142,7 @@ void handle_click() {
 }
 
 void dump_frame() {
-  for (i = 0; i < frame.num_bytes(); i++) {
+  for (int i = 0; i < frame.num_bytes(); i++) {
     Serial.print(frame.get_byte(i), HEX);
     Serial.print(" ");
   }
