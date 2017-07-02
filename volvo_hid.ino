@@ -14,12 +14,14 @@
 #define CS_PIN 15
 #define RX_LED 17
 
+#define HEARTBEAT_TIMEOUT 2000
 #define KEY_TIMEOUT 100
 #define MOUSE_BASE_SPEED 8
 #define MOUSE_SPEEDUP 3
 
 #define SYN_FIELD 0x55
 #define SWM_ID 0x20
+#define HEARTBEAT_ID 0xCF
 
 // Volvo V50 2007 SWM key codes
 //
@@ -45,7 +47,7 @@
 byte b, i, n;
 LinFrame frame;
 
-unsigned long lastBackDown, lastEnterDown, lastMouseDown;
+unsigned long lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown;
 int mouseSpeed = MOUSE_BASE_SPEED;
 
 void setup() {
@@ -55,7 +57,7 @@ void setup() {
   digitalWrite(CS_PIN, HIGH);
 
   // Open serial communications to host (PC) and wait for port to open:
-//  Serial.begin(9600);
+  Serial.begin(9600);
 //  Serial.println("LIN Debugging begins");
 
   Serial1.begin(9600);
@@ -85,10 +87,16 @@ void loop() {
   }
 
   release_keys();
+  check_ignition_key();
 }
 
 void handle_frame() {
-  if (frame.get_byte(0) != SWM_ID)
+  byte id = frame.get_byte(0);
+
+  if (id == HEARTBEAT_ID)
+    lastHeartbeat = millis();
+  
+  if (id != SWM_ID)
     return;
 
   // skip zero values 20 0 0 0 0 FF
@@ -165,3 +173,15 @@ void release_keys() {
     mouseSpeed = MOUSE_BASE_SPEED;
   }
 }
+
+void check_ignition_key() {
+   if (lastHeartbeat && millis() - lastHeartbeat > HEARTBEAT_TIMEOUT) {
+     lastHeartbeat = 0;
+     turn_off();
+   }
+}
+
+void turn_off() {
+  Serial.println("TURN OFF");
+}
+
