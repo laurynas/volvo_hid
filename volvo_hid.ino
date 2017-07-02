@@ -15,7 +15,8 @@
 #define RX_LED 17
 
 #define HEARTBEAT_TIMEOUT 2000
-#define KEY_TIMEOUT 100
+#define CLICK_TIMEOUT 100
+
 #define MOUSE_BASE_SPEED 8
 #define MOUSE_SPEEDUP 3
 
@@ -150,17 +151,17 @@ void move_mouse(int dx, int dy) {
 }
 
 void release_keys() {
-  if (lastEnterDown && currentMillis - lastEnterDown > KEY_TIMEOUT) {
+  if (lastEnterDown && currentMillis - lastEnterDown > CLICK_TIMEOUT) {
     Mouse.release();
     lastEnterDown = 0;
   }
   
-  if (lastBackDown && currentMillis - lastBackDown > KEY_TIMEOUT) {
+  if (lastBackDown && currentMillis - lastBackDown > CLICK_TIMEOUT) {
     Keyboard.release(KEY_ESC);
     lastBackDown = 0;
   }
 
-  if (lastMouseDown && currentMillis - lastMouseDown > KEY_TIMEOUT) { 
+  if (lastMouseDown && currentMillis - lastMouseDown > CLICK_TIMEOUT) { 
     lastMouseDown = 0;
     mouseSpeed = MOUSE_BASE_SPEED;
   }
