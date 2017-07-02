@@ -55,10 +55,7 @@ void setup() {
   pinMode(CS_PIN, OUTPUT);
   digitalWrite(CS_PIN, HIGH);
 
-  // Open serial communications to host (PC) and wait for port to open:
   Serial.begin(9600);
-//  Serial.println("LIN Debugging begins");
-
   Serial1.begin(9600);
 
   Mouse.begin();
