@@ -14,6 +14,13 @@
 #define SYN_FIELD 0x55
 #define SWM_ID 0x20
 
+#define NAV_UP 1
+#define NAV_DOWN 2
+#define NAV_LEFT 4
+#define NAV_RIGHT 8
+#define NAV_BACK 1
+#define NAV_ENTER 8
+
 //Lbus = LIN BUS from Car
 //Vss = Ground
 //Vbb = +12V
@@ -36,12 +43,11 @@
 
 // IGN_KEY_ON     50 E 0 F1
 
-
 byte b, i, n;
 LinFrame frame;
 
 unsigned long lastBackDown, lastEnterDown, lastMouseDown;
-float mouseSpeed;
+float mouseSpeed = MOUSE_BASE_SPEED;
 
 void setup() {
   pinMode(RX_LED, OUTPUT);
@@ -99,30 +105,30 @@ void handle_frame() {
 
 void handle_click() {
   switch (frame.get_byte(1)) {
-    case 1: // up
+    case NAV_UP:
       move_mouse(0, -1);
       break;
-    case 2: // down
+    case NAV_DOWN:
       move_mouse(0, 1);
       break;
-    case 4: // left
+    case NAV_LEFT:
       move_mouse(-1, 0);
       break;
-    case 8: // right
+    case NAV_RIGHT:
       move_mouse(1, 0);
       break;
   }
 
   switch (frame.get_byte(2)) {
-    case 1: // back
-      if (lastBackDown == 0) 
+    case NAV_BACK:
+      if (!lastBackDown) 
         Keyboard.press(KEY_ESC); 
        
       lastBackDown = millis();
       break;
       
-    case 8: // enter
-      if (lastEnterDown == 0)
+    case NAV_ENTER:
+      if (!lastEnterDown)
         Mouse.press(); 
       
       lastEnterDown = millis();
@@ -139,28 +145,24 @@ void dump_frame() {
 }
 
 void move_mouse(int dx, int dy) {
-  if (mouseSpeed == 0)
-    mouseSpeed = MOUSE_BASE_SPEED;
-  else
-    mouseSpeed += MOUSE_SPEEDUP;
-  
   Mouse.move(dx * mouseSpeed, dy * mouseSpeed, 0); 
   lastMouseDown = millis();
+  mouseSpeed += MOUSE_SPEEDUP;
 }
 
 void release_keys() {
-  if (lastEnterDown > 0 && millis() - lastEnterDown > KEY_TIMEOUT) {
+  if (lastEnterDown && millis() - lastEnterDown > KEY_TIMEOUT) {
     Mouse.release();
     lastEnterDown = 0;
   }
   
-  if (lastBackDown > 0 && millis() - lastBackDown > KEY_TIMEOUT) {
+  if (lastBackDown && millis() - lastBackDown > KEY_TIMEOUT) {
     Keyboard.release(KEY_ESC);
     lastBackDown = 0;
   }
 
-  if (lastMouseDown > 0 && millis() - lastMouseDown > KEY_TIMEOUT) { 
+  if (lastMouseDown && millis() - lastMouseDown > KEY_TIMEOUT) { 
     lastMouseDown = 0;
-    mouseSpeed = 0;
+    mouseSpeed = MOUSE_BASE_SPEED;
   }
 }
