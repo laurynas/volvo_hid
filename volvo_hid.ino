@@ -21,7 +21,6 @@
 
 #define SYN_FIELD 0x55
 #define SWM_ID 0x20
-#define HEARTBEAT_ID 0xCF
 
 // Volvo V50 2007 SWM key codes
 //
@@ -91,14 +90,11 @@ void loop() {
 }
 
 void handle_frame() {
-  byte id = frame.get_byte(0);
-
-  if (id == HEARTBEAT_ID)
-    lastHeartbeat = millis();
-  
-  if (id != SWM_ID)
+  if (frame.get_byte(0) != SWM_ID)
     return;
 
+  lastHeartbeat = millis();
+  
   // skip zero values 20 0 0 0 0 FF
   if (frame.get_byte(5) == 0xFF)
     return;
