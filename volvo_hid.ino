@@ -37,12 +37,12 @@
 // BTN_RIGHT      20 8 0 0 0 F7
 // IGN_KEY_ON     50 E 0 F1
 
-#define NAV_UP 1
-#define NAV_DOWN 2
-#define NAV_LEFT 4
-#define NAV_RIGHT 8
-#define NAV_BACK 1
-#define NAV_ENTER 8
+#define JOYSTICK_UP 1
+#define JOYSTICK_DOWN 2
+#define JOYSTICK_LEFT 4
+#define JOYSTICK_RIGHT 8
+#define BUTTON_BACK 1
+#define BUTTON_ENTER 8
 
 LinFrame frame = LinFrame();
 
@@ -111,16 +111,16 @@ void handle_swm_frame() {
 
 void handle_joystic() {
   switch (frame.get_byte(1)) {
-    case NAV_UP:
+    case JOYSTICK_UP:
       move_mouse(0, -1);
       break;
-    case NAV_DOWN:
+    case JOYSTICK_DOWN:
       move_mouse(0, 1);
       break;
-    case NAV_LEFT:
+    case JOYSTICK_LEFT:
       move_mouse(-1, 0);
       break;
-    case NAV_RIGHT:
+    case JOYSTICK_RIGHT:
       move_mouse(1, 0);
       break;
   }  
@@ -128,14 +128,14 @@ void handle_joystic() {
 
 void handle_buttons() {
   switch (frame.get_byte(2)) {
-    case NAV_BACK:
+    case BUTTON_BACK:
       if (!lastBackDown) 
         Keyboard.press(KEY_ESC); 
        
       lastBackDown = currentMillis;
       break;
       
-    case NAV_ENTER:
+    case BUTTON_ENTER:
       if (!lastEnterDown)
         Mouse.press(); 
       
