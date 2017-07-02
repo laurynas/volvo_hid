@@ -105,11 +105,11 @@ void handle_swm_frame() {
     return;
 
 //  dump_frame();
-  handle_joystic();
+  handle_joystick();
   handle_buttons();  
 }
 
-void handle_joystic() {
+void handle_joystick() {
   switch (frame.get_byte(1)) {
     case JOYSTICK_UP:
       move_mouse(0, -1);
