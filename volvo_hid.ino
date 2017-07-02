@@ -1,3 +1,10 @@
+//Lbus = LIN BUS from Car
+//Vss = Ground
+//Vbb = +12V
+
+// MCP2004 LIN bus frame:
+// ZERO_BYTE SYN_BYTE ID_BYTE DATA_BYTES.. CHECKSUM_BYTE
+
 #include "Mouse.h"
 #include "Keyboard.h"
 
@@ -14,22 +21,8 @@
 #define SYN_FIELD 0x55
 #define SWM_ID 0x20
 
-#define NAV_UP 1
-#define NAV_DOWN 2
-#define NAV_LEFT 4
-#define NAV_RIGHT 8
-#define NAV_BACK 1
-#define NAV_ENTER 8
-
-//Lbus = LIN BUS from Car
-//Vss = Ground
-//Vbb = +12V
-
-// MCP2004 LIN bus frame:
-// ZERO_BYTE SYN_BYTE ID_BYTE DATA_BYTES.. CHECKSUM_BYTE
-
 // Volvo V50 2007 SWM key codes
-
+//
 // BTN_NEXT       20 0 10 0 0 EF
 // BTN_PREV       20 0 2 0 0 FD
 // BTN_VOL_UP     20 0 0 1 0 FE
@@ -40,8 +33,14 @@
 // BTN_DOWN       20 2 0 0 0 FD
 // BTN_LEFT       20 4 0 0 0 FB
 // BTN_RIGHT      20 8 0 0 0 F7
-
 // IGN_KEY_ON     50 E 0 F1
+
+#define NAV_UP 1
+#define NAV_DOWN 2
+#define NAV_LEFT 4
+#define NAV_RIGHT 8
+#define NAV_BACK 1
+#define NAV_ENTER 8
 
 byte b, i, n;
 LinFrame frame;
