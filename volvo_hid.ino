@@ -45,7 +45,7 @@
 
 LinFrame frame = LinFrame();
 
-unsigned long lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown;
+unsigned long currentMillis, lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown;
 int mouseSpeed = MOUSE_BASE_SPEED;
 
 void setup() {
@@ -62,6 +62,8 @@ void setup() {
 }
 
 void loop() {
+  currentMillis = millis();
+  
   if (Serial1.available())
     read_lin_bus();
 
@@ -92,7 +94,7 @@ void handle_swm_frame() {
   if (frame.get_byte(0) != SWM_ID)
     return;
 
-  lastHeartbeat = millis();
+  lastHeartbeat = currentMillis;
   
   // skip zero values 20 0 0 0 0 FF
   if (frame.get_byte(5) == 0xFF)
@@ -129,51 +131,43 @@ void handle_buttons() {
       if (!lastBackDown) 
         Keyboard.press(KEY_ESC); 
        
-      lastBackDown = millis();
+      lastBackDown = currentMillis;
       break;
       
     case NAV_ENTER:
       if (!lastEnterDown)
         Mouse.press(); 
       
-      lastEnterDown = millis();
+      lastEnterDown = currentMillis;
       break;
   }
 }
 
-void dump_frame() {
-  for (int i = 0; i < frame.num_bytes(); i++) {
-    Serial.print(frame.get_byte(i), HEX);
-    Serial.print(" ");
-  }
-  Serial.println();
-}
-
 void move_mouse(int dx, int dy) {
   Mouse.move(dx * mouseSpeed, dy * mouseSpeed, 0); 
-  lastMouseDown = millis();
+  lastMouseDown = currentMillis;
   mouseSpeed += MOUSE_SPEEDUP;
 }
 
 void release_keys() {
-  if (lastEnterDown && millis() - lastEnterDown > KEY_TIMEOUT) {
+  if (lastEnterDown && currentMillis - lastEnterDown > KEY_TIMEOUT) {
     Mouse.release();
     lastEnterDown = 0;
   }
   
-  if (lastBackDown && millis() - lastBackDown > KEY_TIMEOUT) {
+  if (lastBackDown && currentMillis - lastBackDown > KEY_TIMEOUT) {
     Keyboard.release(KEY_ESC);
     lastBackDown = 0;
   }
 
-  if (lastMouseDown && millis() - lastMouseDown > KEY_TIMEOUT) { 
+  if (lastMouseDown && currentMillis - lastMouseDown > KEY_TIMEOUT) { 
     lastMouseDown = 0;
     mouseSpeed = MOUSE_BASE_SPEED;
   }
 }
 
 void check_ignition_key() {
-   if (lastHeartbeat && millis() - lastHeartbeat > HEARTBEAT_TIMEOUT) {
+   if (lastHeartbeat && currentMillis - lastHeartbeat > HEARTBEAT_TIMEOUT) {
      lastHeartbeat = 0;
      turn_off();
    }
@@ -181,5 +175,15 @@ void check_ignition_key() {
 
 void turn_off() {
   Serial.println("TURN OFF");
+}
+
+// -- debugging
+
+void dump_frame() {
+  for (int i = 0; i < frame.num_bytes(); i++) {
+    Serial.print(frame.get_byte(i), HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
 }
 
