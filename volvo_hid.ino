@@ -7,21 +7,31 @@
 
 #include "Mouse.h"
 #include "Keyboard.h"
+#include "SoftwareSerial.h"
 
 // https://github.com/zapta/linbus/tree/master/analyzer/arduino
 #include "lin_frame.h"
 
 #define CS_PIN 15
 #define RX_LED 17
+#define MOBILE_CHARGER_PIN A3
+#define RTI_RX_PIN 8
+#define RTI_TX_PIN 9
 
 #define HEARTBEAT_TIMEOUT 2000
 #define CLICK_TIMEOUT 100
+
+#define RTI_INTERVAL 100
+#define MOBILE_CHARGER_TRIGGER_TIME 2500
 
 #define MOUSE_BASE_SPEED 8
 #define MOUSE_SPEEDUP 3
 
 #define SYN_FIELD 0x55
 #define SWM_ID 0x20
+
+#define STATE_OFF 0
+#define STATE_ON 1
 
 // Volvo V50 2007 SWM key codes
 //
@@ -44,32 +54,42 @@
 #define BUTTON_BACK 1
 #define BUTTON_ENTER 8
 
+short rtiStep;
+
+SoftwareSerial rtiSerial(RTI_RX_PIN, RTI_TX_PIN);
+
 LinFrame frame = LinFrame();
 
-unsigned long currentMillis, lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown;
+unsigned long currentMillis, lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown, lastRtiWrite;
 int mouseSpeed = MOUSE_BASE_SPEED;
+short state = STATE_OFF;
 
 void setup() {
   pinMode(RX_LED, OUTPUT);
-  
+
   pinMode(CS_PIN, OUTPUT);
   digitalWrite(CS_PIN, HIGH);
 
-  Serial.begin(9600);
+//  Serial.begin(9600);
   Serial1.begin(9600);
+  rtiSerial.begin(2400);
 
   Mouse.begin();
   Keyboard.begin();
+
+  pinMode(MOBILE_CHARGER_PIN, OUTPUT);
+  analogWrite(MOBILE_CHARGER_PIN, 0);
 }
 
 void loop() {
   currentMillis = millis();
-  
+
   if (Serial1.available())
     read_lin_bus();
 
   release_keys();
   check_ignition_key();
+  rti();
 }
 
 void read_lin_bus() {
@@ -78,11 +98,11 @@ void read_lin_bus() {
 
   if (b == SYN_FIELD && n > 2 && frame.get_byte(n - 1) == 0) {
     digitalWrite(RX_LED, LOW);
-    
+
     frame.pop_byte();
     handle_swm_frame();
     frame.reset();
-    
+
     digitalWrite(RX_LED, HIGH);
   } else if (n == LinFrame::kMaxBytes) {
     frame.reset();
@@ -96,7 +116,7 @@ void handle_swm_frame() {
     return;
 
   lastHeartbeat = currentMillis;
-  
+
   // skip zero values 20 0 0 0 0 FF
   if (frame.get_byte(5) == 0xFF)
     return;
@@ -104,9 +124,9 @@ void handle_swm_frame() {
   if (!frame.isValid())
     return;
 
-//  dump_frame();
+  //  dump_frame();
   handle_joystick();
-  handle_buttons();  
+  handle_buttons();
 }
 
 void handle_joystick() {
@@ -123,59 +143,106 @@ void handle_joystick() {
     case JOYSTICK_RIGHT:
       move_mouse(1, 0);
       break;
-  }  
+  }
 }
 
 void handle_buttons() {
   switch (frame.get_byte(2)) {
     case BUTTON_BACK:
-      if (!lastBackDown) 
-        Keyboard.press(KEY_ESC); 
-       
+      if (!lastBackDown)
+        Keyboard.press(KEY_ESC);
+
       lastBackDown = currentMillis;
       break;
-      
+
     case BUTTON_ENTER:
-      if (!lastEnterDown)
-        Mouse.press(); 
-      
+      if (!lastEnterDown && state == STATE_ON)
+        Mouse.press();
+
       lastEnterDown = currentMillis;
       break;
   }
 }
 
 void move_mouse(int dx, int dy) {
-  Mouse.move(dx * mouseSpeed, dy * mouseSpeed, 0); 
+  Mouse.move(dx * mouseSpeed, dy * mouseSpeed, 0);
   lastMouseDown = currentMillis;
   mouseSpeed += MOUSE_SPEEDUP;
 }
 
 void release_keys() {
   if (lastEnterDown && currentMillis - lastEnterDown > CLICK_TIMEOUT) {
-    Mouse.release();
+    if (state == STATE_ON)
+      Mouse.release();
+    else
+      turn_on();
+
     lastEnterDown = 0;
   }
-  
+
   if (lastBackDown && currentMillis - lastBackDown > CLICK_TIMEOUT) {
     Keyboard.release(KEY_ESC);
     lastBackDown = 0;
   }
 
-  if (lastMouseDown && currentMillis - lastMouseDown > CLICK_TIMEOUT) { 
+  if (lastMouseDown && currentMillis - lastMouseDown > CLICK_TIMEOUT) {
     lastMouseDown = 0;
     mouseSpeed = MOUSE_BASE_SPEED;
   }
 }
 
 void check_ignition_key() {
-   if (lastHeartbeat && currentMillis - lastHeartbeat > HEARTBEAT_TIMEOUT) {
-     lastHeartbeat = 0;
-     turn_off();
-   }
+  if (lastHeartbeat && currentMillis - lastHeartbeat > HEARTBEAT_TIMEOUT) {
+    lastHeartbeat = 0;
+    turn_off();
+  }
+}
+
+void turn_on() {
+  state = STATE_ON;
+  turn_on_phone();
+}
+
+void turn_on_phone() {
+  analogWrite(MOBILE_CHARGER_PIN, 255);
+  delay(MOBILE_CHARGER_TRIGGER_TIME);
+  analogWrite(MOBILE_CHARGER_PIN, 0);
 }
 
 void turn_off() {
-  Serial.println("TURN OFF");
+  state = STATE_OFF;
+}
+
+// send serial data to Volvo RTI screen mechanism
+void rti() {
+  if (currentMillis - lastRtiWrite < RTI_INTERVAL) return;
+  
+  switch (rtiStep) {
+    case 0: // mode
+      if (state == STATE_OFF) 
+        rti_print(0x46);
+      else
+        rti_print(0x40);
+              
+      rtiStep++;
+      break;
+
+    case 1: // brightness
+      rti_print(0x20);
+      rtiStep++;
+      break;
+
+    case 2: // sync
+      rti_print(0x83);
+      rtiStep = 0;
+      break;    
+  }
+
+  lastRtiWrite = currentMillis;
+}
+
+void rti_print(char byte) {
+  rtiSerial.print(byte);
 }
 
 // -- debugging
