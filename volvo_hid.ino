@@ -5,6 +5,8 @@
 // MCP2004 LIN bus frame:
 // ZERO_BYTE SYN_BYTE ID_BYTE DATA_BYTES.. CHECKSUM_BYTE
 
+#define DEBUG false
+
 #include "Mouse.h"
 #include "Keyboard.h"
 #include "SoftwareSerial.h"
@@ -15,11 +17,12 @@
 #define CS_PIN 15
 #define RX_LED 17
 #define MOBILE_CHARGER_PIN A3
-#define RTI_RX_PIN 8
-#define RTI_TX_PIN 9
+#define RTI_RX_PIN 16
+#define RTI_TX_PIN 10
 
 #define HEARTBEAT_TIMEOUT 2000
 #define CLICK_TIMEOUT 100
+#define OFF_CLICK_TIMEOUT 3000 // how long to hold "back" button to turn off
 
 #define RTI_INTERVAL 100
 #define MOBILE_CHARGER_TRIGGER_TIME 2500
@@ -47,12 +50,35 @@
 // BTN_RIGHT      20 8 0 0 0 F7
 // IGN_KEY_ON     50 E 0 F1
 
-#define JOYSTICK_UP 1
-#define JOYSTICK_DOWN 2
-#define JOYSTICK_LEFT 4
-#define JOYSTICK_RIGHT 8
-#define BUTTON_BACK 1
-#define BUTTON_ENTER 8
+#define KEY_MEDIA_PLAYPAUSE 0xe8
+#define KEY_MEDIA_STOPCD 0xe9
+#define KEY_MEDIA_PREVIOUSSONG 0xea
+#define KEY_MEDIA_NEXTSONG 0xeb
+#define KEY_MEDIA_EJECTCD 0xec
+#define KEY_MEDIA_VOLUMEUP 0xed
+#define KEY_MEDIA_VOLUMEDOWN 0xee
+#define KEY_MEDIA_MUTE 0xef
+#define KEY_MEDIA_WWW 0xf0
+#define KEY_MEDIA_BACK 0xf1
+#define KEY_MEDIA_FORWARD 0xf2
+#define KEY_MEDIA_STOP 0xf3
+#define KEY_MEDIA_FIND 0xf4
+#define KEY_MEDIA_SCROLLUP 0xf5
+#define KEY_MEDIA_SCROLLDOWN 0xf6
+#define KEY_MEDIA_EDIT 0xf7
+#define KEY_MEDIA_SLEEP 0xf8
+#define KEY_MEDIA_COFFEE 0xf9
+#define KEY_MEDIA_REFRESH 0xfa
+#define KEY_MEDIA_CALC 0xfb
+
+#define JOYSTICK_UP 0x1
+#define JOYSTICK_DOWN 0x2
+#define JOYSTICK_LEFT 0x4
+#define JOYSTICK_RIGHT 0x8
+#define BUTTON_BACK 0x1
+#define BUTTON_ENTER 0x8
+#define BUTTON_NEXT 0x10
+#define BUTTON_PREV 0x2
 
 short rtiStep;
 
@@ -60,7 +86,7 @@ SoftwareSerial rtiSerial(RTI_RX_PIN, RTI_TX_PIN);
 
 LinFrame frame = LinFrame();
 
-unsigned long currentMillis, lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown, lastRtiWrite;
+unsigned long currentMillis, lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown, lastOffDown, lastRtiWrite, lastPrevDown, lastNextDown, lastOnTrigger;
 int mouseSpeed = MOUSE_BASE_SPEED;
 short state = STATE_OFF;
 
@@ -70,7 +96,9 @@ void setup() {
   pinMode(CS_PIN, OUTPUT);
   digitalWrite(CS_PIN, HIGH);
 
-//  Serial.begin(9600);
+  if (DEBUG) 
+    Serial.begin(9600);
+
   Serial1.begin(9600);
   rtiSerial.begin(2400);
 
@@ -79,6 +107,8 @@ void setup() {
 
   pinMode(MOBILE_CHARGER_PIN, OUTPUT);
   analogWrite(MOBILE_CHARGER_PIN, 0);
+
+  //turn_on();
 }
 
 void loop() {
@@ -87,7 +117,11 @@ void loop() {
   if (Serial1.available())
     read_lin_bus();
 
+  // debug
+  //test_mouse_move();
+
   release_keys();
+  release_on();
   check_ignition_key();
   rti();
 }
@@ -153,6 +187,9 @@ void handle_buttons() {
         Keyboard.press(KEY_ESC);
 
       lastBackDown = currentMillis;
+
+      if (!lastOffDown)
+        lastOffDown = currentMillis;
       break;
 
     case BUTTON_ENTER:
@@ -161,6 +198,29 @@ void handle_buttons() {
 
       lastEnterDown = currentMillis;
       break;
+
+    case BUTTON_PREV:
+      if (!lastPrevDown) {
+        Keyboard.press(KEY_MEDIA_PREVIOUSSONG);
+        debug("PREV");
+      }
+
+      lastPrevDown = currentMillis;
+      break;
+
+    case BUTTON_NEXT:
+      if (!lastNextDown) {
+        Keyboard.press(KEY_MEDIA_NEXTSONG);
+        debug("NEXT");
+      }
+        
+      lastNextDown = currentMillis;
+      break;
+
+    default:
+      Serial.write(frame.get_byte(2));
+      debug("");
+      lastOffDown = 0;
   }
 }
 
@@ -189,27 +249,52 @@ void release_keys() {
     lastMouseDown = 0;
     mouseSpeed = MOUSE_BASE_SPEED;
   }
+
+  if (lastOffDown && currentMillis - lastOffDown > OFF_CLICK_TIMEOUT) {
+    turn_off();
+    lastOffDown = 0;
+  }
+
+  if (lastPrevDown && currentMillis - lastPrevDown > CLICK_TIMEOUT) {
+    Keyboard.release(KEY_MEDIA_PREVIOUSSONG);
+    lastPrevDown = 0;
+  }
+
+  if (lastNextDown && currentMillis - lastNextDown > CLICK_TIMEOUT) {
+    Keyboard.release(KEY_MEDIA_NEXTSONG);
+    lastNextDown = 0;
+  }
 }
 
 void check_ignition_key() {
   if (lastHeartbeat && currentMillis - lastHeartbeat > HEARTBEAT_TIMEOUT) {
+    debug("Ignition off");
     lastHeartbeat = 0;
     turn_off();
   }
 }
 
 void turn_on() {
+  debug("Turn on");
   state = STATE_ON;
   turn_on_phone();
 }
 
 void turn_on_phone() {
   analogWrite(MOBILE_CHARGER_PIN, 255);
-  delay(MOBILE_CHARGER_TRIGGER_TIME);
-  analogWrite(MOBILE_CHARGER_PIN, 0);
+  lastOnTrigger = currentMillis;
+}
+
+void release_on() {
+  if (lastOnTrigger && currentMillis - lastOnTrigger > MOBILE_CHARGER_TRIGGER_TIME) {
+    analogWrite(MOBILE_CHARGER_PIN, 0);
+    lastOnTrigger = 0;
+    debug("Release on");
+  }
 }
 
 void turn_off() {
+  debug("Turn off");
   state = STATE_OFF;
 }
 
@@ -223,6 +308,11 @@ void rti() {
         rti_print(0x46);
       else
         rti_print(0x40);
+
+      if (state == STATE_OFF)
+        debug("RTI OFF");
+      else
+        debug("RTI ON");
               
       rtiStep++;
       break;
@@ -247,11 +337,23 @@ void rti_print(char byte) {
 
 // -- debugging
 
+void test_mouse_move() {
+  delay(1000);
+  Mouse.move(10, 10, 0);
+  delay(1000);
+  Mouse.move(-10, -10, 0);
+}
+
 void dump_frame() {
   for (int i = 0; i < frame.num_bytes(); i++) {
     Serial.print(frame.get_byte(i), HEX);
     Serial.print(" ");
   }
   Serial.println();
+}
+
+void debug(char* message) {
+  if (DEBUG)
+    Serial.println(message);
 }
 
