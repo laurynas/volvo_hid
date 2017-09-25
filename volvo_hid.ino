@@ -15,16 +15,19 @@
 
 #define CS_PIN 15
 #define RX_LED 17
-#define MOBILE_CHARGER_PIN A3
 #define RTI_RX_PIN 16
 #define RTI_TX_PIN 10
 
-#define HEARTBEAT_TIMEOUT 2000
-#define CLICK_TIMEOUT 100
-#define OFF_CLICK_TIMEOUT 3000 // how long to hold "back" button to turn off
+#define POWER_BUTTON_PIN A3
+#define POWER_BUTTON_DURATION 2500
 
+#define ON_CLICK_DURATION 100
+#define OFF_CLICK_DURATION 3000 // how long to hold "back" button to turn off
+
+#define CLICK_TIMEOUT 100
+
+#define HEARTBEAT_TIMEOUT 2000
 #define RTI_INTERVAL 100
-#define MOBILE_CHARGER_TRIGGER_TIME 2500
 
 #define MOUSE_BASE_SPEED 8
 #define MOUSE_SPEEDUP 3
@@ -64,9 +67,10 @@ SoftwareSerial rtiSerial(RTI_RX_PIN, RTI_TX_PIN);
 
 LinFrame frame = LinFrame();
 
-unsigned long currentMillis, lastHeartbeat, lastBackDown, lastEnterDown, lastMouseDown, lastOffDown, lastRtiWrite, lastPrevDown, lastNextDown, lastOnTrigger;
+unsigned long currentMillis, lastHeartbeat, lastRtiWrite, lastOnTrigger, buttonDownAt, lastButtonAt;
 int mouseSpeed = MOUSE_BASE_SPEED;
 short state = STATE_OFF;
+byte currentButton, currentJoystickButton;
 
 void setup() {
   pinMode(RX_LED, OUTPUT);
@@ -84,8 +88,8 @@ void setup() {
   Keyboard.begin();
   Consumer.begin();
 
-  pinMode(MOBILE_CHARGER_PIN, OUTPUT);
-  analogWrite(MOBILE_CHARGER_PIN, 0);
+  pinMode(POWER_BUTTON_PIN, OUTPUT);
+  analogWrite(POWER_BUTTON_PIN, 0);
 
   //turn_on();
 }
@@ -99,7 +103,7 @@ void loop() {
   // debug
   //test_mouse_move();
 
-  release_keys();
+  timeout_button();
   release_on();
   check_ignition_key();
   rti();
@@ -143,7 +147,14 @@ void handle_swm_frame() {
 }
 
 void handle_joystick() {
-  switch (frame.get_byte(1)) {
+  byte button = frame.get_byte(1);
+
+  if (button != currentJoystickButton) {
+    mouseSpeed = MOUSE_BASE_SPEED;
+    currentJoystickButton = button;
+  }
+
+  switch (button) {
     case JOYSTICK_UP:
       move_mouse(0, -1);
       break;
@@ -155,92 +166,78 @@ void handle_joystick() {
       break;
     case JOYSTICK_RIGHT:
       move_mouse(1, 0);
-      break;
-  }
-}
-
-void handle_buttons() {
-  switch (frame.get_byte(2)) {
-    case BUTTON_BACK:
-      if (!lastBackDown)
-        Consumer.press(HID_CONSUMER_AC_BACK);
-
-      lastBackDown = currentMillis;
-
-      if (!lastOffDown)
-        lastOffDown = currentMillis;
-      break;
-
-    case BUTTON_ENTER:
-      if (!lastEnterDown && state == STATE_ON)
-        Mouse.press();
-
-      lastEnterDown = currentMillis;
-      break;
-
-    case BUTTON_PREV:
-      if (!lastPrevDown) {
-        Consumer.write(MEDIA_PREVIOUS);
-        debug("PREV");
-      }
-
-      lastPrevDown = currentMillis;
-      break;
-
-    case BUTTON_NEXT:
-      if (!lastNextDown) {
-        Consumer.write(MEDIA_NEXT);
-        debug("NEXT");
-      }
-        
-      lastNextDown = currentMillis;
-      break;
-
-    default:
-      Serial.write(frame.get_byte(2));
-      debug("");
-      lastOffDown = 0;
+      break;  
   }
 }
 
 void move_mouse(int dx, int dy) {
   Mouse.move(dx * mouseSpeed, dy * mouseSpeed, 0);
-  lastMouseDown = currentMillis;
   mouseSpeed += MOUSE_SPEEDUP;
 }
 
-void release_keys() {
-  if (lastEnterDown && currentMillis - lastEnterDown > CLICK_TIMEOUT) {
-    if (state == STATE_ON)
+void handle_buttons() {
+  byte button = frame.get_byte(2);
+
+  if (!button)
+    return;
+  
+  if (button != currentButton) {
+    release_button(currentButton, currentMillis - buttonDownAt);
+    click_button(button);
+    
+    currentButton = button;
+    buttonDownAt = currentMillis;
+  }
+
+  lastButtonAt = currentMillis;
+}
+
+void click_button(byte button) {
+  if (state != STATE_ON)
+    return;
+  
+  switch (button) {
+    case BUTTON_ENTER:
+      Mouse.press();
+      break;
+    case BUTTON_BACK:
+      Consumer.press(HID_CONSUMER_AC_BACK);
+      break;
+    case BUTTON_PREV:
+      Consumer.write(MEDIA_PREVIOUS);
+      break;
+    case BUTTON_NEXT:
+      Consumer.write(MEDIA_NEXT);
+      break;
+  }
+}
+
+void timeout_button() {
+  if (!currentButton) 
+    return;
+
+  if (currentMillis - lastButtonAt > CLICK_TIMEOUT) 
+    release_button(currentButton, currentMillis - buttonDownAt);
+}
+
+void release_button(byte button, unsigned long clickDuration) {
+  if (state == STATE_OFF && button == BUTTON_ENTER && clickDuration > ON_CLICK_DURATION)
+    return turn_on();
+
+  switch (button) {
+    case BUTTON_ENTER:
       Mouse.release();
-    else
-      turn_on();
-
-    lastEnterDown = 0;
+      break;
+      
+    case BUTTON_BACK:
+      Consumer.release(HID_CONSUMER_AC_BACK);
+      
+      if (clickDuration > OFF_CLICK_DURATION)
+        turn_off();
+      break;
   }
 
-  if (lastBackDown && currentMillis - lastBackDown > CLICK_TIMEOUT) {
-    Consumer.release(HID_CONSUMER_AC_BACK);
-    lastBackDown = 0;
-  }
-
-  if (lastMouseDown && currentMillis - lastMouseDown > CLICK_TIMEOUT) {
-    lastMouseDown = 0;
-    mouseSpeed = MOUSE_BASE_SPEED;
-  }
-
-  if (lastOffDown && currentMillis - lastOffDown > OFF_CLICK_TIMEOUT) {
-    turn_off();
-    lastOffDown = 0;
-  }
-
-  if (lastPrevDown && currentMillis - lastPrevDown > CLICK_TIMEOUT) {
-    lastPrevDown = 0;
-  }
-
-  if (lastNextDown && currentMillis - lastNextDown > CLICK_TIMEOUT) {
-    lastNextDown = 0;
-  }
+  currentButton = 0;
 }
 
 void check_ignition_key() {
@@ -258,13 +255,13 @@ void turn_on() {
 }
 
 void turn_on_phone() {
-  analogWrite(MOBILE_CHARGER_PIN, 255);
+  analogWrite(POWER_BUTTON_PIN, 255);
   lastOnTrigger = currentMillis;
 }
 
 void release_on() {
-  if (lastOnTrigger && currentMillis - lastOnTrigger > MOBILE_CHARGER_TRIGGER_TIME) {
-    analogWrite(MOBILE_CHARGER_PIN, 0);
+  if (lastOnTrigger && currentMillis - lastOnTrigger > POWER_BUTTON_DURATION) {
+    analogWrite(POWER_BUTTON_PIN, 0);
     lastOnTrigger = 0;
     debug("Release on");
   }
