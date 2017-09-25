@@ -7,8 +7,7 @@
 
 #define DEBUG false
 
-#include "Mouse.h"
-#include "Keyboard.h"
+#include "HID-Project.h"
 #include "SoftwareSerial.h"
 
 // https://github.com/zapta/linbus/tree/master/analyzer/arduino
@@ -50,27 +49,6 @@
 // BTN_RIGHT      20 8 0 0 0 F7
 // IGN_KEY_ON     50 E 0 F1
 
-#define KEY_MEDIA_PLAYPAUSE 0xe8
-#define KEY_MEDIA_STOPCD 0xe9
-#define KEY_MEDIA_PREVIOUSSONG 0xea
-#define KEY_MEDIA_NEXTSONG 0xeb
-#define KEY_MEDIA_EJECTCD 0xec
-#define KEY_MEDIA_VOLUMEUP 0xed
-#define KEY_MEDIA_VOLUMEDOWN 0xee
-#define KEY_MEDIA_MUTE 0xef
-#define KEY_MEDIA_WWW 0xf0
-#define KEY_MEDIA_BACK 0xf1
-#define KEY_MEDIA_FORWARD 0xf2
-#define KEY_MEDIA_STOP 0xf3
-#define KEY_MEDIA_FIND 0xf4
-#define KEY_MEDIA_SCROLLUP 0xf5
-#define KEY_MEDIA_SCROLLDOWN 0xf6
-#define KEY_MEDIA_EDIT 0xf7
-#define KEY_MEDIA_SLEEP 0xf8
-#define KEY_MEDIA_COFFEE 0xf9
-#define KEY_MEDIA_REFRESH 0xfa
-#define KEY_MEDIA_CALC 0xfb
-
 #define JOYSTICK_UP 0x1
 #define JOYSTICK_DOWN 0x2
 #define JOYSTICK_LEFT 0x4
@@ -104,6 +82,7 @@ void setup() {
 
   Mouse.begin();
   Keyboard.begin();
+  Consumer.begin();
 
   pinMode(MOBILE_CHARGER_PIN, OUTPUT);
   analogWrite(MOBILE_CHARGER_PIN, 0);
@@ -184,7 +163,7 @@ void handle_buttons() {
   switch (frame.get_byte(2)) {
     case BUTTON_BACK:
       if (!lastBackDown)
-        Keyboard.press(KEY_ESC);
+        Consumer.press(HID_CONSUMER_AC_BACK);
 
       lastBackDown = currentMillis;
 
@@ -201,7 +180,7 @@ void handle_buttons() {
 
     case BUTTON_PREV:
       if (!lastPrevDown) {
-        Keyboard.press(KEY_MEDIA_PREVIOUSSONG);
+        Consumer.write(MEDIA_PREVIOUS);
         debug("PREV");
       }
 
@@ -210,7 +189,7 @@ void handle_buttons() {
 
     case BUTTON_NEXT:
       if (!lastNextDown) {
-        Keyboard.press(KEY_MEDIA_NEXTSONG);
+        Consumer.write(MEDIA_NEXT);
         debug("NEXT");
       }
         
@@ -241,7 +220,7 @@ void release_keys() {
   }
 
   if (lastBackDown && currentMillis - lastBackDown > CLICK_TIMEOUT) {
-    Keyboard.release(KEY_ESC);
+    Consumer.release(HID_CONSUMER_AC_BACK);
     lastBackDown = 0;
   }
 
@@ -256,12 +235,10 @@ void release_keys() {
   }
 
   if (lastPrevDown && currentMillis - lastPrevDown > CLICK_TIMEOUT) {
-    Keyboard.release(KEY_MEDIA_PREVIOUSSONG);
     lastPrevDown = 0;
   }
 
   if (lastNextDown && currentMillis - lastNextDown > CLICK_TIMEOUT) {
-    Keyboard.release(KEY_MEDIA_NEXTSONG);
     lastNextDown = 0;
   }
 }
